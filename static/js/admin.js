@@ -9,6 +9,8 @@
     var addMsg = document.getElementById("add-msg");
     var pendingMsg = document.getElementById("pending-msg");
     var pendingList = document.getElementById("pending-list");
+    var approvedMsg = document.getElementById("approved-msg");
+    var approvedList = document.getElementById("approved-list");
 
     function fetchJson(url, options) {
         return fetch(url, options).then(function (r) {
@@ -77,6 +79,7 @@
                     return;
                 }
                 loadPending();
+                loadApproved();
             }).catch(function () {
                 msg.textContent = "Network error";
             });
@@ -106,6 +109,83 @@
         card.appendChild(msg);
 
         return card;
+    }
+
+    function createApprovedCard(product) {
+        var card = document.createElement("div");
+        card.className = "pending-card";
+
+        var img = document.createElement("img");
+        img.className = "product-image";
+        img.src = product.image_data;
+        img.alt = product.name;
+
+        var title = document.createElement("h3");
+        title.textContent = product.name;
+
+        var meta = document.createElement("p");
+        meta.className = "product-meta";
+        meta.textContent = "Seller: " + product.seller_username +
+            " — qty " + product.quantity +
+            " — " + Number(product.price).toFixed(2) + " M$";
+
+        var removeBtn = document.createElement("button");
+        removeBtn.className = "button";
+        removeBtn.type = "button";
+        removeBtn.textContent = "Remove from shop";
+
+        var msg = document.createElement("p");
+        msg.className = "product-msg";
+
+        removeBtn.addEventListener("click", function () {
+            msg.textContent = "";
+            if (!window.confirm("Remove \"" + product.name + "\" from the shop?")) {
+                return;
+            }
+            fetchJson("/api/products/" + product.id, {
+                method: "DELETE",
+                credentials: "include",
+            }).then(function (res) {
+                if (!res.ok) {
+                    msg.textContent = res.d.error || "Remove failed";
+                    return;
+                }
+                loadApproved();
+            }).catch(function () {
+                msg.textContent = "Network error";
+            });
+        });
+
+        card.appendChild(img);
+        card.appendChild(title);
+        card.appendChild(meta);
+        card.appendChild(removeBtn);
+        card.appendChild(msg);
+
+        return card;
+    }
+
+    function loadApproved() {
+        approvedMsg.textContent = "";
+        approvedList.innerHTML = "";
+
+        fetchJson("/api/products/approved", { credentials: "include" })
+            .then(function (res) {
+                if (!res.ok) {
+                    approvedMsg.textContent = res.d.error || "Could not load shop listings";
+                    return;
+                }
+                if (!res.d.length) {
+                    approvedMsg.textContent = "No approved listings in the shop.";
+                    return;
+                }
+                res.d.forEach(function (product) {
+                    approvedList.appendChild(createApprovedCard(product));
+                });
+            })
+            .catch(function () {
+                approvedMsg.textContent = "Network error";
+            });
     }
 
     function loadPending() {
@@ -170,10 +250,12 @@
             productQuantity.value = "";
             productPrice.value = "";
             loadPending();
+            loadApproved();
         }).catch(function (err) {
             addMsg.textContent = err.message || "Could not add product";
         });
     });
 
     loadPending();
+    loadApproved();
 })();

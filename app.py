@@ -348,6 +348,25 @@ def api_products_pending():
     return jsonify([p.to_dict() for p in products])
 
 
+@app.route("/api/products/approved", methods=["GET"])
+@login_required
+def api_products_approved():
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    products = (
+        Product.query.filter_by(status="approved")
+        .order_by(Product.created_at.desc())
+        .all()
+    )
+    return jsonify([p.to_dict() for p in products])
+
+
 @app.route("/api/products", methods=["POST"])
 def api_products_create():
     err = _config_error()
@@ -451,6 +470,28 @@ def api_products_reject(product_id):
     product.status = "rejected"
     db.session.commit()
     return jsonify({"success": True, "product": product.to_dict(include_image=False)})
+
+
+@app.route("/api/products/<int:product_id>", methods=["DELETE"])
+@login_required
+def api_products_remove(product_id):
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    product = db.session.get(Product, product_id)
+    if not product:
+        return jsonify({"error": "Product not found"}), 404
+    if product.status != "approved":
+        return jsonify({"error": "Only approved listings can be removed from the shop"}), 400
+
+    db.session.delete(product)
+    db.session.commit()
+    return jsonify({"success": True})
 
 
 @app.route("/api/purchase", methods=["POST"])
