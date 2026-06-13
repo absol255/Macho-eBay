@@ -499,7 +499,7 @@ def api_purchase():
     total = product.price * quantity
     buyer_balance = Decimal(str(buyer.macho_bucks))
     if buyer_balance < total:
-        return jsonify({"error": "Not enough Macho Bucks"}), 400
+        return jsonify({"error": "Not enough M$"}), 400
 
     buyer.macho_bucks = buyer_balance - total
     seller.macho_bucks = Decimal(str(seller.macho_bucks)) + total

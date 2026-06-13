@@ -45,7 +45,7 @@
         signinCard.style.display = "none";
         sellerCard.style.display = "";
         myListingsCard.style.display = "";
-        sellerWelcome.textContent = "Signed in as " + user.username + " (" + user.macho_bucks + " Macho Bucks)";
+        sellerWelcome.textContent = "Signed in as " + user.username + " (" + Number(user.macho_bucks).toFixed(2) + " M$)";
         loadMyListings();
     }
 
