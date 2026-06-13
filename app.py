@@ -9,8 +9,8 @@ from flask import (
 )
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from config import Config
-from models import db, User, Admin, Seller
-from decimal import Decimal
+from models import db, User, Admin, Product
+from decimal import Decimal, InvalidOperation
 import os
 import time
 import click
@@ -35,8 +35,6 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-HISTORY_LIMIT = 48
-
 
 def init_db():
     with app.app_context():
@@ -52,13 +50,16 @@ def ensure_tables():
         app.logger.exception("ensure_tables failed")
         return str(exc)
 
+
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)
         return super().default(obj)
 
+
 app.json_encoder = DecimalEncoder
+
 
 def maybe_bootstrap_admin():
     """Optional: set BOOTSTRAP_ADMIN_USER + BOOTSTRAP_ADMIN_PASSWORD in Vercel once."""
@@ -78,29 +79,53 @@ def maybe_bootstrap_admin():
         app.logger.exception("bootstrap admin failed")
         db.session.rollback()
 
-def determine_rank(score: int) -> str:
-    if  score < 50:
-        return "No Rank"
-    elif 50 <= score < 55:
-        return "Base"
-    elif 55 <= score < 60:
-        return "Bronze"
-    elif 60 <= score < 65:
-        return "Silver"
-    elif 65 <= score < 70:
-        return "Gold"
-    elif 70 <= score < 75:
-        return "Amethyst"
-    elif 75 <= score < 80:
-        return "Platinum"
-    elif 80 <= score < 85:
-        return "Sapphire"
-    elif 85 <= score < 90:
-        return "Diamond"
-    elif 90 <= score < 95:
-        return "Emerald"
-    else:
-        return "Ruby"
+
+def parse_bank_account_number(value):
+    if value is None or value == "":
+        return None
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def find_user_by_credentials(username, bank_account_number):
+    username = (username or "").strip()
+    bank_num = parse_bank_account_number(bank_account_number)
+    if not username or bank_num is None:
+        return None
+    return User.query.filter_by(
+        username=username,
+        bank_account_number=bank_num,
+    ).first()
+
+
+def get_seller_user_id():
+    seller_id = session.get("seller_user_id")
+    if not seller_id:
+        return None
+    return db.session.get(User, int(seller_id))
+
+
+def parse_positive_int(value, field_name):
+    try:
+        num = int(value)
+    except (TypeError, ValueError):
+        return None, f"{field_name} must be a positive integer"
+    if num <= 0:
+        return None, f"{field_name} must be a positive integer"
+    return num, None
+
+
+def parse_price(value):
+    try:
+        price = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, "Price must be a valid number"
+    if price <= 0:
+        return None, "Price must be greater than zero"
+    return price, None
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -116,13 +141,16 @@ def unauthorized():
         return jsonify({"error": "Login required"}), 401
     return redirect(url_for("login"))
 
+
 @app.route("/")
 def index():
     return render_template("index.html")
 
+
 @app.route("/selling")
 def selling():
     return render_template("selling.html")
+
 
 @app.route("/admin")
 @login_required
@@ -140,6 +168,7 @@ def login():
 def logout():
     logout_user()
     return redirect("/")
+
 
 def _config_error():
     if not app.config.get("SECRET_KEY"):
@@ -222,6 +251,270 @@ def api_login():
     return jsonify({"success": True, "username": admin.username})
 
 
+@app.route("/api/session", methods=["POST"])
+def api_session():
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    bank_account_number = data.get("bank_account_number")
+
+    user = find_user_by_credentials(username, bank_account_number)
+    if not user:
+        return jsonify({"error": "Invalid username or bank account number"}), 401
+
+    session.permanent = True
+    session["seller_user_id"] = user.id
+    return jsonify({"success": True, "user": user.to_dict()})
+
+
+@app.route("/api/session", methods=["GET"])
+def api_session_status():
+    user = get_seller_user_id()
+    if not user:
+        return jsonify({"signed_in": False})
+    return jsonify({"signed_in": True, "user": user.to_dict()})
+
+
+@app.route("/api/session", methods=["DELETE"])
+def api_session_logout():
+    session.pop("seller_user_id", None)
+    return jsonify({"success": True})
+
+
+@app.route("/api/products", methods=["GET"])
+def api_products_list():
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    products = (
+        Product.query.filter_by(status="approved")
+        .filter(Product.quantity > 0)
+        .order_by(Product.created_at.desc())
+        .all()
+    )
+    return jsonify([p.to_dict() for p in products])
+
+
+@app.route("/api/products/mine", methods=["GET"])
+def api_products_mine():
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    user = get_seller_user_id()
+    if not user:
+        return jsonify({"error": "Sign in required"}), 401
+
+    products = (
+        Product.query.filter_by(seller_id=user.id)
+        .order_by(Product.created_at.desc())
+        .all()
+    )
+    return jsonify([p.to_dict(include_image=False) for p in products])
+
+
+@app.route("/api/products/pending", methods=["GET"])
+@login_required
+def api_products_pending():
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    products = (
+        Product.query.filter_by(status="pending")
+        .order_by(Product.created_at.asc())
+        .all()
+    )
+    return jsonify([p.to_dict() for p in products])
+
+
+@app.route("/api/products", methods=["POST"])
+def api_products_create():
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    image_data = (data.get("image_data") or "").strip()
+
+    quantity, qty_err = parse_positive_int(data.get("quantity"), "Quantity")
+    if qty_err:
+        return jsonify({"error": qty_err}), 400
+
+    price, price_err = parse_price(data.get("price"))
+    if price_err:
+        return jsonify({"error": price_err}), 400
+
+    if not name:
+        return jsonify({"error": "Product name is required"}), 400
+    if not image_data:
+        return jsonify({"error": "Product image is required"}), 400
+
+    is_admin = current_user.is_authenticated
+
+    if is_admin:
+        seller = find_user_by_credentials(
+            data.get("username"),
+            data.get("bank_account_number"),
+        )
+        if not seller:
+            return jsonify({"error": "Seller username and bank account number required"}), 400
+        status = "approved"
+    else:
+        seller = get_seller_user_id()
+        if not seller:
+            return jsonify({"error": "Sign in required"}), 401
+        status = "pending"
+
+    product = Product(
+        seller_id=seller.id,
+        name=name[:128],
+        image_data=image_data,
+        quantity=quantity,
+        price=price,
+        status=status,
+    )
+    db.session.add(product)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "product": product.to_dict(include_image=False),
+        "auto_approved": is_admin,
+    })
+
+
+@app.route("/api/products/<int:product_id>/approve", methods=["POST"])
+@login_required
+def api_products_approve(product_id):
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    product = db.session.get(Product, product_id)
+    if not product:
+        return jsonify({"error": "Product not found"}), 404
+    if product.status != "pending":
+        return jsonify({"error": "Product is not pending approval"}), 400
+
+    product.status = "approved"
+    db.session.commit()
+    return jsonify({"success": True, "product": product.to_dict(include_image=False)})
+
+
+@app.route("/api/products/<int:product_id>/reject", methods=["POST"])
+@login_required
+def api_products_reject(product_id):
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    product = db.session.get(Product, product_id)
+    if not product:
+        return jsonify({"error": "Product not found"}), 404
+    if product.status != "pending":
+        return jsonify({"error": "Product is not pending approval"}), 400
+
+    product.status = "rejected"
+    db.session.commit()
+    return jsonify({"success": True, "product": product.to_dict(include_image=False)})
+
+
+@app.route("/api/purchase", methods=["POST"])
+def api_purchase():
+    err = _config_error()
+    if err:
+        return jsonify({"error": err}), 503
+
+    table_err = ensure_tables()
+    if table_err:
+        return jsonify({"error": "Tables not ready: " + table_err}), 503
+
+    data = request.get_json(silent=True) or {}
+    product_id = data.get("product_id")
+
+    try:
+        product_id = int(product_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Product id is required"}), 400
+
+    quantity, qty_err = parse_positive_int(data.get("quantity"), "Quantity")
+    if qty_err:
+        return jsonify({"error": qty_err}), 400
+
+    buyer = find_user_by_credentials(
+        data.get("username"),
+        data.get("bank_account_number"),
+    )
+    if not buyer:
+        return jsonify({"error": "Invalid username or bank account number"}), 401
+
+    product = db.session.get(Product, product_id)
+    if not product or product.status != "approved":
+        return jsonify({"error": "Product not available"}), 404
+
+    if product.quantity < quantity:
+        return jsonify({"error": "Not enough stock available"}), 400
+
+    seller = db.session.get(User, product.seller_id)
+    if not seller:
+        return jsonify({"error": "Seller not found"}), 404
+
+    if buyer.id == seller.id:
+        return jsonify({"error": "You cannot buy your own listing"}), 400
+
+    total = product.price * quantity
+    buyer_balance = Decimal(str(buyer.macho_bucks))
+    if buyer_balance < total:
+        return jsonify({"error": "Not enough Macho Bucks"}), 400
+
+    buyer.macho_bucks = buyer_balance - total
+    seller.macho_bucks = Decimal(str(seller.macho_bucks)) + total
+    product.quantity -= quantity
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "total": total,
+        "remaining_balance": buyer.macho_bucks,
+        "product": product.to_dict(include_image=False),
+    })
+
+
 @app.cli.command("create-admin")
 @click.argument("username")
 @click.argument("password")
@@ -236,6 +529,7 @@ def create_admin(username, password):
     db.session.add(admin)
     db.session.commit()
     click.echo("Admin created: " + username)
+
 
 try:
     init_db()

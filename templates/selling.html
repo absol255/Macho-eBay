@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Macho eBay</title>
+    <title>Selling — Macho eBay</title>
 
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/navigation.css">
@@ -15,11 +15,33 @@
     <nav>
         <a class="nav" href="/">Home</a>
         <a class="nav" href="/selling">Selling</a>
-        <a class="nav" href="/admin">Admin Panel</a>
+        <a class="nav" href="/login">Admin Login</a>
     </nav>
     <div class="container">
-        <div class="card">
+        <div class="card" id="signin-card">
+            <h2>Selling</h2>
+            <p>Sign in with your username and bank account number.</p>
+            <input type="text" id="username" placeholder="Username" maxlength="64" autocomplete="username">
+            <input type="text" id="bankaccnum" placeholder="Bank account number" inputmode="numeric" autocomplete="off">
+            <button class="button" id="signin-btn" type="button">Sign In</button>
+            <p id="signin-msg"></p>
+        </div>
 
+        <div class="card" id="seller-card" style="display: none;">
+            <h2>List a product</h2>
+            <p id="seller-welcome"></p>
+            <input type="text" id="product-name" placeholder="Product name" maxlength="128">
+            <input type="file" id="product-image" accept="image/*">
+            <input type="number" id="product-quantity" placeholder="Quantity" min="1" step="1">
+            <input type="number" id="product-price" placeholder="Price (Macho Bucks)" min="0.01" step="0.01">
+            <button class="button" id="list-btn" type="button">Submit for approval</button>
+            <button class="button" id="signout-btn" type="button">Sign Out</button>
+            <p id="list-msg"></p>
+        </div>
+
+        <div class="card" id="my-listings-card" style="display: none;">
+            <h2>Your listings</h2>
+            <div id="my-listings"></div>
         </div>
     </div>
     <script src="/static/js/selling.js"></script>

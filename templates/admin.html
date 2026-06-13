@@ -11,7 +11,7 @@
 
     <div class="hero">
         <h1 id="logo">ADMIN PANEL</h1>
-        <p class="subtitle">Manage auctions and the Piazza di San Lorenzo in Lucinia</p>
+        <p class="subtitle">Approve seller listings and add products directly to the shop.</p>
     </div>
 
     <nav>
@@ -23,7 +23,22 @@
 
     <div class="container">
         <div class="card">
+            <h2>Add product (instant approval)</h2>
+            <p>Same form as sellers, but listings go live immediately.</p>
+            <input type="text" id="seller-username" placeholder="Seller username" maxlength="64" autocomplete="username">
+            <input type="text" id="seller-bankaccnum" placeholder="Seller bank account number" inputmode="numeric" autocomplete="off">
+            <input type="text" id="product-name" placeholder="Product name" maxlength="128">
+            <input type="file" id="product-image" accept="image/*">
+            <input type="number" id="product-quantity" placeholder="Quantity" min="1" step="1">
+            <input type="number" id="product-price" placeholder="Price (Macho Bucks)" min="0.01" step="0.01">
+            <button class="button" id="add-btn" type="button">Add to shop</button>
+            <p id="add-msg"></p>
+        </div>
 
+        <div class="card">
+            <h2>Pending approvals</h2>
+            <p id="pending-msg"></p>
+            <div id="pending-list"></div>
         </div>
     </div>
 
