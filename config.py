@@ -32,4 +32,4 @@ class Config:
     # Vercel serves HTTPS; secure cookies are required for sessions to stick
     SESSION_COOKIE_SECURE = bool(os.getenv("VERCEL"))
     PERMANENT_SESSION_LIFETIME = timedelta(days=7)
-    SQLALCHEMY_ENGINE_OPTIONS = {"pre_pool_ping": True}
+    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
