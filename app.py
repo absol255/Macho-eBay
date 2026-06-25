@@ -394,10 +394,22 @@ def api_products_create():
     if not image_data:
         return jsonify({"error": "Product image is required"}), 400
     
-    seller = get_seller_user_id()
-    if not seller:
-        return jsonify({"error": "Sign in required"}), 401
-    status = "pending"
+    is_admin = current_user.is_authenticated
+
+    
+    if is_admin:
+        seller = find_user_by_credentials(
+        data.get("username"),
+        data.get("bank_account_number"),
+    )
+        if not seller:
+            return jsonify({"error": "Seller username and bank account number required"}), 400
+        status = "approved"
+    else:
+        seller = get_seller_user_id()
+        if not seller:
+            return jsonify({"error": "Sign in required"}), 401
+        status = "pending"
 
     product = Product(
         seller_id=seller.id,
