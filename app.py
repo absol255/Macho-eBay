@@ -389,7 +389,7 @@ def api_products_create():
     if price_err:
         return jsonify({"error": price_err}), 400
 
-    if (quantity, price) > 9223372036854775807:
+    if quantity > 9223372036854775807 or price > 9223372036854775807:
         return jsonify({"error", "Quantity or price is too large"}), 400
 
     if not name:
