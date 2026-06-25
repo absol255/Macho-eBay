@@ -393,9 +393,6 @@ def api_products_create():
         return jsonify({"error": "Product name is required"}), 400
     if not image_data:
         return jsonify({"error": "Product image is required"}), 400
-
-    is_admin = current_user.is_authenticated
-
     
     seller = get_seller_user_id()
     if not seller:
@@ -416,7 +413,6 @@ def api_products_create():
     return jsonify({
         "success": True,
         "product": product.to_dict(include_image=False),
-        "auto_approved": is_admin,
     })
 
 
